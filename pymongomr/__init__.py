@@ -77,14 +77,24 @@ class MapReduce(object):
         return self._get_con()[self.database]
 
 #    Override Methods
+    def splitter(self):
+        """
+        Split the input query up into chunks which can be worked on
+        independently.
+        """
+        return [self.query, []]
+
     def map(self, item):
+        """
+        Apply to every item and collect the results.
+        """
         raise NotImplementedError()
 
     def reduce(self, key, values):
+        """
+        Use to combine map results.
+        """
         raise NotImplementedError()
-
-    def splitter(self):
-        return [self.query, []]
 
 #    Interface Methods
     def start(self):
