@@ -17,10 +17,10 @@ class NullHandler(logging.Handler):
 logger = logging.getLogger("pymr")
 logger.addHandler(NullHandler())
 
-class StopMessage(object):
+class PoisonPill(object):
     pass
 
-class StoppingQueue(object):
+class PoisonQueue(object):
     """
     An iterable queue that will stop iterating once it's received a
     predefined number of stop events.
@@ -34,14 +34,14 @@ class StoppingQueue(object):
         return getattr(self.queue, name)
 
     def done(self):
-        self.put(StopMessage())
+        self.put(PoisonPill())
 
     def get_iter(self):
         stops = 0
         while True:
             try:
                 item = self.get()
-                if isinstance(item, StopMessage):
+                if isinstance(item, PoisonPill):
                     stops += 1
                     if stops >= self.stops:
                         break
@@ -100,7 +100,7 @@ class MapReduce(object):
     def start(self):
         self._start_workers()
 
-        self._outqueue = StoppingQueue(self.outqueue_size)
+        self._outqueue = PoisonQueue(self.outqueue_size)
         multiprocessing.Process(target=self._final_reduce).start()
 
     def results(self):
@@ -110,7 +110,7 @@ class MapReduce(object):
     def _start_workers(self):
         splits            = self.splitter()
         self._num_workers = len(splits)
-        self._redqueue    = StoppingQueue(self.redqueue_size, self._num_workers)
+        self._redqueue    = PoisonQueue(self.redqueue_size, self._num_workers)
 
         for num, (query, sort) in enumerate(splits):
             multiprocessing.Process(target=self._worker, args=(num, query, sort)).start()
