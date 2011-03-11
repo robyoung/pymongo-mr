@@ -98,6 +98,9 @@ class MapReduce(object):
         """
         raise NotImplementedError()
 
+    def finalize(self, key, value):
+        return value
+
 #    Interface Methods
     def start(self):
         self._start_workers()
@@ -155,11 +158,19 @@ class MapReduce(object):
         items = defaultdict(list)
         for key, value in self._redqueue.get_iter():
             items[key].append(value)
-        
-        if self.out:
-            coll = self._get_db()[self.out]
-            for key, values in items.items():
-                coll.save({"_id":key, "value":self.reduce(key, values)})
-        else:
-            self._reduce_and_send(items, self._outqueue)
+
+        func = self.out and self._save_func() or self._send_func
+
+        for key, values in items.items():
+            func(key, self.finalize(key, self.reduce(key, values)))
+
         self._outqueue.done()
+
+    def _save_func(self):
+        coll = self._get_db()[self.out]
+        def func(key, value):
+            coll.save({"_id":key, "value":value}, safe=True)
+        return func
+
+    def _send_func(self, key, value):
+        self._outqueue.put((key, value))
