@@ -103,10 +103,13 @@ class MapReduce(object):
         self._start_workers()
 
         self._outqueue = PoisonQueue(self.outqueue_size)
+        if self.out:
+            self._get_db()[self.out].drop()
         multiprocessing.Process(target=self._final_reduce).start()
 
     def results(self):
         if self.out:
+            self._outqueue.get()
             coll = self._get_db()[self.out]
             for item in coll.find():
                 yield item['_id'], item['value']
@@ -156,4 +159,4 @@ class MapReduce(object):
                 coll.save({"_id":key, "value":self.reduce(key, values)})
         else:
             self._reduce_and_send(items, self._outqueue)
-            self._outqueue.done()
+        self._outqueue.done()
