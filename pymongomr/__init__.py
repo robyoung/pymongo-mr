@@ -65,6 +65,8 @@ class MapReduce(object):
     query  = {}
     spec   = {}
 
+    out = None
+
     def __init__(self, host="localhost", port=27017):
         self._host = host
         self._port = port
@@ -104,8 +106,13 @@ class MapReduce(object):
         multiprocessing.Process(target=self._final_reduce).start()
 
     def results(self):
-        for item in self._outqueue.get_iter():
-            yield item
+        if self.out:
+            coll = self._get_db()[self.out]
+            for item in coll.find():
+                yield item['_id'], item['value']
+        else:
+            for item in self._outqueue.get_iter():
+                yield item
 
     def _start_workers(self):
         splits            = self.splitter()
@@ -142,5 +149,11 @@ class MapReduce(object):
         items = defaultdict(list)
         for key, value in self._redqueue.get_iter():
             items[key].append(value)
-        self._reduce_and_send(items, self._outqueue)
-        self._outqueue.done()
+        
+        if self.out:
+            coll = self._get_db()[self.out]
+            for key, values in items.items():
+                coll.save({"_id":key, "value":self.reduce(key, values)})
+        else:
+            self._reduce_and_send(items, self._outqueue)
+            self._outqueue.done()
