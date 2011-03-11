@@ -107,6 +107,9 @@ class MapReduce(object):
             self._get_db()[self.out].drop()
         multiprocessing.Process(target=self._final_reduce).start()
 
+    def join(self):
+        self._outqueue.get()
+
     def results(self):
         if self.out:
             self._outqueue.get()
