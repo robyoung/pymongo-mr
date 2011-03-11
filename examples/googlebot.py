@@ -26,8 +26,10 @@ class MyMapReduce(pymongomr.MapReduce):
         "user_agent": True
     }
 
+    out = "testout"
+
     def splitter(self):
-        num_workers = 6
+        num_workers = 8
         delta    = datetime.datetime.now() - self.query['created_at']['$gt']
         delta   /= num_workers
         queries  = []
