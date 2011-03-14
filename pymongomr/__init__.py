@@ -86,6 +86,9 @@ class MapReduce(object):
         """
         return [self.query, []]
 
+    def init_worker(self, num):
+        pass
+
     def map(self, item):
         """
         Apply to every item and collect the results.
@@ -133,6 +136,7 @@ class MapReduce(object):
 
     def _worker(self, num, query, sort):
         logger.debug("worker %s start" % num)
+        self.init_worker(num)
         items = defaultdict(list)
         for item in self._get_db()[self.collection].find(query, self.spec, sort=sort):
             for key, value in self.map(item):
