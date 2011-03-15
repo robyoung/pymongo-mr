@@ -84,7 +84,7 @@ class MapReduce(object):
         Split the input query up into chunks which can be worked on
         independently.
         """
-        return [self.query, []]
+        return [(self.query, [])]
 
     def init_worker(self, num):
         pass
