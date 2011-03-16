@@ -210,7 +210,7 @@ class MapReduce(object):
 class MapReduceException(Exception):
     def __init__(self, collection, query, sort, e):
         super(MapReduceException, self).__init__("%s, %s, %s, %s" % (collection, query, sort, e.message))
-        self.collection = colletion
+        self.collection = collection
         self.query      = query
         self.sort       = sort
         self.e          = e
