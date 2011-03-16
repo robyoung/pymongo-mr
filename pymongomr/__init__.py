@@ -120,7 +120,17 @@ class MapReduce(object):
         raise NotImplementedError()
 
     def finalize(self, key, value):
+        """
+        Called once for each key, use to calculate statistics over a specific
+        aggregation.
+        """
         return value
+
+    def complete(self):
+        """
+        Called when all finalize calls have been completed, use to calculate
+        statistics over the entire result.
+        """
 
 #    Interface Methods
     def start(self):
@@ -209,6 +219,8 @@ class MapReduce(object):
 
         for key, values in items.items():
             func(key, self.finalize(key, self.reduce(key, values)))
+
+        self.complete()
 
         self._outqueue.done()
 
