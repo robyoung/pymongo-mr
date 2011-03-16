@@ -40,7 +40,7 @@ class PoisonQueue(object):
         for num in range(self.stops):
             self.done()
 
-    def get_iter(self):
+    def get_out_iter(self):
         stops = 0
         while True:
             try:
@@ -54,18 +54,29 @@ class PoisonQueue(object):
             except Queue.Empty:
                 pass
 
+    def get_in_iter(self):
+        while True:
+            try:
+                item = self.get()
+                if isinstance(item, PoisonPill):
+                    break
+                else:
+                    yield item
+            except Queue.Empty:
+                pass
+
 class MapReduce(object):
     """
     Map reduce base class that manages the worker processes and colates the
     results.
     """
 
-    item_limit    = 100
-    reduce_limit  = 1000
+    item_limit    = 1000
+    reduce_limit  = 100
 
     inqueue_size  = 100
-    redqueue_size = 10000
-    outqueue_size = 10000
+    redqueue_size = 100
+    outqueue_size = 100
 
     num_workers   = 1
 
@@ -130,7 +141,7 @@ class MapReduce(object):
             for item in coll.find():
                 yield item['_id'], item['value']
         else:
-            for item in self._outqueue.get_iter():
+            for item in self._outqueue.get_out_iter():
                 yield item
 
     def _start_workers(self):
@@ -154,29 +165,31 @@ class MapReduce(object):
         self.init_worker(num)
         items = defaultdict(list)
 
-        for query, sort in self._inqueue.get_iter():
+        for query, sort in self._inqueue.get_in_iter():
             try:
                 logger.debug("worker %s starting split" % num)
                 self.query = query
 
-                if isinstance(query, Query):
-                    find = self._find(query.collection, query.query, query.spec, query.sort)
-                else:
-                    find = self._find(self.collection).find(query, self.spec, sort=sort)
+                if not isinstance(query, Query):
+                    query = Query(self.collection, query, self.spec, sort)
 
+                find  = self._find(query.collection, query.query, query.spec, query.sort)
+                count = 0
                 for item in find:
+                    count += 1
                     for key, value in self.map(item):
                         key = str(key)
                         items[key].append(value)
                         if len(items[key]) > self.item_limit:
+
                             items[key] = [self.reduce(key, items[key])]
                     if len(items) > self.reduce_limit:
                         items = self._reduce_and_send(items, self._redqueue)
                         logger.debug("reduce and flush from worker %s" % num)
 
-                logger.debug("worker %s finish split" % num)
+                logger.debug("worker %s finished %s in split" % (num, count))
             except Exception, e:
-                raise MapReduceException(collection, query, sort, e)
+                raise MapReduceException(query.collection, query.query, query.sort, e)
                 
         self._redqueue.done()
         logger.debug("worker %s finish" % num)
@@ -188,7 +201,7 @@ class MapReduce(object):
 
     def _final_reduce(self):
         items = defaultdict(list)
-        for key, value in self._redqueue.get_iter():
+        for key, value in self._redqueue.get_out_iter():
             items[key].append(value)
 
         func = self.out and self._save_func() or self._send_func
