@@ -155,7 +155,6 @@ class MapReduce(object):
                 yield item
 
     def _start_workers(self):
-        splits            = self.splitter()
         self._inqueue     = PoisonQueue(self.inqueue_size, self.num_workers)
         self._redqueue    = PoisonQueue(self.redqueue_size, self.num_workers)
 
@@ -215,12 +214,17 @@ class MapReduce(object):
         for key, value in self._redqueue.get_out_iter():
             items[key].append(value)
 
+        # TODO: decide whether this is a good idea, should they always go
+        #       output collection?
         func = self.out and self._save_func() or self._send_func
 
-        for key, values in items.items():
-            func(key, self.finalize(key, self.reduce(key, values)))
+        for key, values in items.keys():
+            items[key] = self.finalize(key, self.reduce(key, items[key]))
 
-        self.complete()
+        self.complete(items)
+
+        for key, value in items.items():
+            func(key, value)
 
         self._outqueue.done()
 
