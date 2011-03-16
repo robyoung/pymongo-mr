@@ -193,3 +193,7 @@ class Query(object):
         self.query      = query
         self.spec       = spec
         self.sort       = sort
+
+    def __iter__(self):
+        yield self
+        yield None
