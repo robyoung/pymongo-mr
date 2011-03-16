@@ -136,9 +136,16 @@ class MapReduce(object):
 
     def _worker(self, num, query, sort):
         logger.debug("worker %s start" % num)
+        self.query = query
         self.init_worker(num)
         items = defaultdict(list)
-        for item in self._get_db()[self.collection].find(query, self.spec, sort=sort):
+
+        if isinstance(query, Query):
+            find = self._get_db()[query.collection].find(query.query, query.spec, sort=query.sort)
+        else:
+            find = self._get_db()[self.collection].find(query, self.spec, sort=sort)
+
+        for item in find:
             for key, value in self.map(item):
                 key = str(key)
                 items[key].append(value)
@@ -178,3 +185,11 @@ class MapReduce(object):
 
     def _send_func(self, key, value):
         self._outqueue.put((key, value))
+
+
+class Query(object):
+    def __init__(self, collection, query, spec, sort):
+        self.collection = collection
+        self.query      = query
+        self.spec       = spec
+        self.sort       = sort
