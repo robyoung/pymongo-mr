@@ -190,7 +190,8 @@ class MapReduce(object):
                 logger.debug("worker %s finished %s in split" % (num, count))
             except Exception, e:
                 raise MapReduceException(query.collection, query.query, query.sort, e)
-                
+
+        self._reduce_and_send(items, self._redqueue)
         self._redqueue.done()
         logger.debug("worker %s finish" % num)
 
