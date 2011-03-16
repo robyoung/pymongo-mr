@@ -36,6 +36,10 @@ class PoisonQueue(object):
     def done(self):
         self.put(PoisonPill())
 
+    def done_all(self):
+        for num in range(self.stops):
+            self.done()
+
     def get_iter(self):
         stops = 0
         while True:
@@ -59,8 +63,11 @@ class MapReduce(object):
     item_limit    = 100
     reduce_limit  = 1000
 
+    inqueue_size  = 100
     redqueue_size = 10000
     outqueue_size = 10000
+
+    num_workers   = 1
 
     query  = {}
     spec   = {}
@@ -128,36 +135,46 @@ class MapReduce(object):
 
     def _start_workers(self):
         splits            = self.splitter()
-        self._num_workers = len(splits)
-        self._redqueue    = PoisonQueue(self.redqueue_size, self._num_workers)
+        self._inqueue     = PoisonQueue(self.inqueue_size, self.num_workers)
+        self._redqueue    = PoisonQueue(self.redqueue_size, self.num_workers)
 
-        for num, (query, sort) in enumerate(splits):
-            multiprocessing.Process(target=self._worker, args=(num, query, sort)).start()
+        for num in range(self.num_workers):
+            multiprocessing.Process(target=self._worker, args=(num,)).start()
 
-    def _worker(self, num, query, sort):
+        for item in self.splitter():
+            self._inqueue.put(item)
+
+        self._inqueue.done_all()
+
+    def _find(self, collection, query, spec, sort):
+        return self._get_db()[collection].find(query, spec, sort=sort)
+
+    def _worker(self, num):
         logger.debug("worker %s start" % num)
-        self.query = query
         self.init_worker(num)
         items = defaultdict(list)
 
-        if isinstance(query, Query):
-            find = self._get_db()[query.collection].find(query.query, query.spec, sort=query.sort)
-        else:
-            find = self._get_db()[self.collection].find(query, self.spec, sort=sort)
+        for query, sort in self._inqueue.get_iter():
+            logger.debug("worker %s starting split" % num)
+            self.query = query
 
-        for item in find:
-            for key, value in self.map(item):
-                key = str(key)
-                items[key].append(value)
-                if len(items[key]) > self.item_limit:
-                    items[key] = [self.reduce(key, items[key])]
-            if len(items) > self.reduce_limit:
-                items = self._reduce_and_send(items, self._redqueue)
-                logger.debug("reduce and flush from worker %s" % num)
+            if isinstance(query, Query):
+                find = self._find(query.collection, query.query, query.spec, query.sort)
+            else:
+                find = self._find(self.collection).find(query, self.spec, sort=sort)
 
-        self._reduce_and_send(items, self._redqueue)
+            for item in find:
+                for key, value in self.map(item):
+                    key = str(key)
+                    items[key].append(value)
+                    if len(items[key]) > self.item_limit:
+                        items[key] = [self.reduce(key, items[key])]
+                if len(items) > self.reduce_limit:
+                    items = self._reduce_and_send(items, self._redqueue)
+                    logger.debug("reduce and flush from worker %s" % num)
+
+            logger.debug("worker %s finish split" % num)
         self._redqueue.done()
-
         logger.debug("worker %s finish" % num)
 
     def _reduce_and_send(self, items, queue):
