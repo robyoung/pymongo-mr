@@ -155,25 +155,29 @@ class MapReduce(object):
         items = defaultdict(list)
 
         for query, sort in self._inqueue.get_iter():
-            logger.debug("worker %s starting split" % num)
-            self.query = query
+            try:
+                logger.debug("worker %s starting split" % num)
+                self.query = query
 
-            if isinstance(query, Query):
-                find = self._find(query.collection, query.query, query.spec, query.sort)
-            else:
-                find = self._find(self.collection).find(query, self.spec, sort=sort)
+                if isinstance(query, Query):
+                    find = self._find(query.collection, query.query, query.spec, query.sort)
+                else:
+                    find = self._find(self.collection).find(query, self.spec, sort=sort)
 
-            for item in find:
-                for key, value in self.map(item):
-                    key = str(key)
-                    items[key].append(value)
-                    if len(items[key]) > self.item_limit:
-                        items[key] = [self.reduce(key, items[key])]
-                if len(items) > self.reduce_limit:
-                    items = self._reduce_and_send(items, self._redqueue)
-                    logger.debug("reduce and flush from worker %s" % num)
+                for item in find:
+                    for key, value in self.map(item):
+                        key = str(key)
+                        items[key].append(value)
+                        if len(items[key]) > self.item_limit:
+                            items[key] = [self.reduce(key, items[key])]
+                    if len(items) > self.reduce_limit:
+                        items = self._reduce_and_send(items, self._redqueue)
+                        logger.debug("reduce and flush from worker %s" % num)
 
-            logger.debug("worker %s finish split" % num)
+                logger.debug("worker %s finish split" % num)
+            except Exception, e:
+                raise MapReduceException(collection, query, sort, e)
+                
         self._redqueue.done()
         logger.debug("worker %s finish" % num)
 
@@ -203,6 +207,13 @@ class MapReduce(object):
     def _send_func(self, key, value):
         self._outqueue.put((key, value))
 
+class MapReduceException(Exception):
+    def __init__(self, collection, query, sort, e):
+        super(MapReduceException, self).__init__("%s, %s, %s, %s" % (self.collection, self.query, self.sort, e.message))
+        self.collection = colletion
+        self.query      = query
+        self.sort       = sort
+        self.e          = e
 
 class Query(object):
     def __init__(self, collection, query, spec, sort):
