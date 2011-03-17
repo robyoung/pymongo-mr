@@ -218,14 +218,10 @@ class MapReduce(object):
         #       output collection?
         func = self.out and self._save_func() or self._send_func
 
-        for key in items.keys():
-            items[key] = self.finalize(key, self.reduce(key, items[key]))
-
-        self.complete(items)
-
         for key, value in items.items():
-            func(key, value)
+            func(key, self.finalize(key, self.reduce(key, value)))
 
+        self.complete()
         self._outqueue.done()
 
     def _save_func(self):
