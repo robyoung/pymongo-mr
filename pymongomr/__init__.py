@@ -166,8 +166,8 @@ class MapReduce(object):
 
         self._inqueue.done_all()
 
-    def _find(self, collection, query, spec, sort):
-        return self._get_db()[collection].find(query, spec, sort=sort)
+    def _find(self, query):
+        return self._get_db()[query.collection].find(query.query, query.spec, sort=query.sort, skip=query.skip, limit=query.limit)
 
     def _worker(self, num):
         logger.debug("worker %s start" % num)
@@ -182,7 +182,7 @@ class MapReduce(object):
                 if not isinstance(query, Query):
                     query = Query(self.collection, query, self.spec, sort)
 
-                find  = self._find(query.collection, query.query, query.spec, query.sort)
+                find  = self._find(query)
                 count = 0
                 for item in find:
                     count += 1
@@ -242,11 +242,13 @@ class MapReduceException(Exception):
         self.e          = e
 
 class Query(object):
-    def __init__(self, collection, query, spec, sort):
+    def __init__(self, collection, query, spec, sort, skip=0, limit=0):
         self.collection = collection
         self.query      = query
         self.spec       = spec
         self.sort       = sort
+        self.skip       = skip
+        self.limit      = limit
 
     def __iter__(self):
         yield self
