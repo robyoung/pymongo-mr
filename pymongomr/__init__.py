@@ -40,6 +40,12 @@ class PoisonQueue(object):
         for num in range(self.stops):
             self.done()
 
+    def join(self):
+        """Wait for all poison pills ignoring anything else."""
+        for event in self.get_out_iter():
+            pass
+
+
     def get_out_iter(self):
         stops = 0
         while True:
