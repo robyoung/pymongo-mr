@@ -1,12 +1,9 @@
 __author__="rob"
 __date__ ="$Mar 8, 2011 4:23:38 PM$"
 
-from bson.objectid import ObjectId
 import pymongo
 import multiprocessing
 import Queue
-import copy
-import datetime
 import logging
 from collections import defaultdict
 
