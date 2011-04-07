@@ -5,6 +5,7 @@ import pymongo
 import multiprocessing
 import Queue
 import logging
+import os
 from collections import defaultdict
 
 class NullHandler(logging.Handler):
@@ -213,19 +214,23 @@ class MapReduce(object):
         return defaultdict(list)
 
     def _final_reduce(self):
-        items = defaultdict(list)
+        self._debug("starting final reduce")
+        scratch = self._get_db()["pymr.scratch.%s" % os.getpid()]
         for key, value in self._redqueue.get_out_iter():
-            items[key].append(value)
+            scratch.update({"_id":key}, {"$push":{"value":value}}, upsert=True)
 
         # TODO: decide whether this is a good idea, should they always go
         #       output collection?
         func = self.out and self._save_func() or self._send_func
 
-        for key, value in items.items():
-            func(key, self.finalize(key, self.reduce(key, value)))
+        for key, values in (doc['_id'], doc['value'] for doc in scratch.find()):
+            func(key, self.finalize(key, self.reduce(key, values)))
+
+        self._get_db().drop_collection(scratch.name)
 
         self.complete()
         self._outqueue.done()
+        self._debug("final reduce complete")
 
     def _save_func(self):
         coll = self._get_db()[self.out]
