@@ -223,7 +223,7 @@ class MapReduce(object):
         #       output collection?
         func = self.out and self._save_func() or self._send_func
 
-        for key, values in (doc['_id'], doc['value'] for doc in scratch.find()):
+        for key, values in ((doc['_id'], doc['value']) for doc in scratch.find()):
             func(key, self.finalize(key, self.reduce(key, values)))
 
         self._get_db().drop_collection(scratch.name)
