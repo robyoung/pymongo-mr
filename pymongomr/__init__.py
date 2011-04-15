@@ -1,12 +1,12 @@
-__author__="rob"
-__date__ ="$Mar 8, 2011 4:23:38 PM$"
+from __future__ import division
+from collections import defaultdict
+import logging
+import math
+import multiprocessing
+import os
+import Queue
 
 import pymongo
-import multiprocessing
-import Queue
-import logging
-import os
-from collections import defaultdict
 
 class NullHandler(logging.Handler):
     def emit(self, record):
@@ -80,14 +80,16 @@ class MapReduce(object):
 
     inqueue_size  = 100
     redqueue_size = 100
-    outqueue_size = 100
 
     num_workers   = 1
+    num_reducers  = 1
 
     query  = {}
     spec   = {}
 
     out = None
+
+    _scratch_collection = None
 
     def __init__(self, host="localhost", port=27017):
         self._host = host
@@ -138,37 +140,49 @@ class MapReduce(object):
 
 #    Interface Methods
     def start(self):
+        self._scratch_collection = "pymr.scratch.%s" % os.getpid()
+        self._out().drop()
         self._start_workers()
-
-        self._outqueue = PoisonQueue(self.outqueue_size)
-        if self.out:
-            self._get_db()[self.out].drop()
-        multiprocessing.Process(target=self._final_reduce).start()
+        self._start_reducers()
+        self.complete()
+        self._scratch().drop()
 
     def join(self):
-        self._outqueue.get()
+        # nothing to do, legacy
+        pass
+
+    def _out(self):
+        """Returns the output collection."""
+        return self._get_db()[self.out]
+
+    def _scratch(self):
+        """Returns the temporary scratch collection."""
+        return self._get_db()[self._scratch_collection]
 
     def results(self):
-        if self.out:
-            self._outqueue.get()
-            coll = self._get_db()[self.out]
-            for item in coll.find():
-                yield item['_id'], item['value']
-        else:
-            for item in self._outqueue.get_out_iter():
-                yield item
+        for item in self._out().find():
+            yield item['_id'], item['value']
 
     def _start_workers(self):
         self._inqueue     = PoisonQueue(self.inqueue_size, self.num_workers)
-        self._redqueue    = PoisonQueue(self.redqueue_size, self.num_workers)
 
+        # create a process for each worker
+        workers = []
         for num in range(self.num_workers):
-            multiprocessing.Process(target=self._worker, args=(num,)).start()
+            workers.append(multiprocessing.Process(target=self._worker, args=(num,)))
 
+        # start them all
+        for worker in workers:
+            worker.start()
+
+        # feed them
         for item in self.splitter():
             self._inqueue.put(item)
-
         self._inqueue.done_all()
+
+        # join them all because the final reducers cannot start until the workers have finished
+        for worker in workers:
+            worker.join()
 
     def _find(self, query):
         return self._get_db()[query.collection].find(query.query, query.spec, sort=query.sort, skip=query.skip, limit=query.limit)
@@ -176,7 +190,8 @@ class MapReduce(object):
     def _worker(self, num):
         logger.debug("worker %s start" % num)
         self.init_worker(num)
-        items = defaultdict(list)
+        items   = defaultdict(list)
+        scratch = self._scratch()
 
         for query, sort in self._inqueue.get_in_iter():
             try:
@@ -186,60 +201,66 @@ class MapReduce(object):
                 if not isinstance(query, Query):
                     query = Query(self.collection, query, self.spec, sort)
 
-                find  = self._find(query)
                 count = 0
-                for item in find:
+                for item in self._find(query):
                     count += 1
+
                     for key, value in self.map(item):
                         key = str(key)
                         items[key].append(value)
                         if len(items[key]) > self.item_limit:
-
                             items[key] = [self.reduce(key, items[key])]
+
                     if len(items) > self.reduce_limit:
-                        items = self._reduce_and_send(items, self._redqueue)
+                        items = self._reduce_and_send(items, scratch)
                         logger.debug("reduce and flush from worker %s" % num)
 
                 logger.debug("worker %s finished %s in split" % (num, count))
             except Exception, e:
                 raise MapReduceException(query.collection, query.query, query.sort, e)
 
-        self._reduce_and_send(items, self._redqueue)
-        self._redqueue.done()
+        self._reduce_and_send(items, scratch)
         logger.debug("worker %s finish" % num)
 
-    def _reduce_and_send(self, items, queue):
+    def _reduce_and_send(self, items, scratch):
+        """Reduce a list of items and append them to the key in the scratch database."""
         for key, values in items.items():
-            queue.put((key, self.reduce(key, values)))
+            scratch.update({"_id":key}, {"$push":{"value":self.reduce(key, values)}}, upsert=True)
         return defaultdict(list)
 
-    def _final_reduce(self):
-        self._debug("starting final reduce")
-        scratch = self._get_db()["pymr.scratch.%s" % os.getpid()]
-        for key, value in self._redqueue.get_out_iter():
-            scratch.update({"_id":key}, {"$push":{"value":value}}, upsert=True)
+    def _start_reducers(self):
+        scratches = self._scratch().count()
+        limit     = int(math.ceil(scratches / self.num_reducers))
 
-        # TODO: decide whether this is a good idea, should they always go
-        #       output collection?
-        func = self.out and self._save_func() or self._send_func
+        # create a process for each reducer
+        reducers = []
+        for num in range(self.num_reducers):
+            reducers.append(multiprocessing.Process(target=self._reducer, args=(num, limit)))
 
-        for key, values in ((doc['_id'], doc['value']) for doc in scratch.find()):
-            func(key, self.finalize(key, self.reduce(key, values)))
+        # start them all
+        for reducer in reducers:
+            reducer.start()
 
-        self._get_db().drop_collection(scratch.name)
+        # join them all because the scratch collection cannot be dropped before they've all completed
+        for reducer in reducers:
+            reducer.join()
 
-        self.complete()
-        self._outqueue.done()
-        self._debug("final reduce complete")
+    def _reducer(self, num, limit):
+        self._debug("starting reducer %s" % num)
+        scratch = self._scratch()
+        cursor  = scratch.find(skip=limit*num, limit=limit, sort=[("_id", pymongo.ASCENDING)])
+        save    = self._save_func()
+        for key, values in ((doc['_id'], doc['value']) for doc in cursor):
+            save(key, self.finalize(key, self.reduce(key, values)))
+        self._debug("finished reducer %s" % num)
 
     def _save_func(self):
+        if not self.out:
+            raise MapReduceException("No output collection defined, please set a class property called 'out'.")
         coll = self._get_db()[self.out]
         def func(key, value):
             coll.save({"_id":key, "value":value}, safe=True)
         return func
-
-    def _send_func(self, key, value):
-        self._outqueue.put((key, value))
 
 class MapReduceException(Exception):
     def __init__(self, collection, query, sort, e):
