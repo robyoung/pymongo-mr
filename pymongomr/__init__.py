@@ -217,7 +217,7 @@ class MapReduce(object):
 
                 logger.debug("worker %s finished %s in split" % (num, count))
             except Exception, e:
-                raise MapReduceException(query.collection, query.query, query.sort, e)
+                raise MapReduceWorkerException(query.collection, query.query, query.sort, e)
 
         self._reduce_and_send(items, scratch)
         logger.debug("worker %s finish" % num)
@@ -254,6 +254,9 @@ class MapReduce(object):
             save(key, self.finalize(key, self.reduce(key, values)))
         self._debug("finished reducer %s" % num)
 
+    def _debug(self, message):
+        logging.getLogger("pymr.MapReduce").debug(message)
+
     def _save_func(self):
         if not self.out:
             raise MapReduceException("No output collection defined, please set a class property called 'out'.")
@@ -263,6 +266,9 @@ class MapReduce(object):
         return func
 
 class MapReduceException(Exception):
+    pass
+
+class MapReduceWorkerException(MapReduceException):
     def __init__(self, collection, query, sort, e):
         super(MapReduceException, self).__init__("%s, %s, %s, %s" % (collection, query, sort, e.message))
         self.collection = collection
