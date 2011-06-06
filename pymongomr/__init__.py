@@ -110,6 +110,9 @@ class MapReduce(object):
         """
         return [(self.query, [])]
 
+    def init_report(self):
+        pass
+
     def init_worker(self, num):
         pass
 
@@ -142,6 +145,7 @@ class MapReduce(object):
     def start(self):
         self._scratch_collection = "pymr.scratch.%s" % os.getpid()
         self._out().drop()
+        self.init_report()
         self._start_workers()
         self._start_reducers()
         self.complete()
