@@ -198,30 +198,27 @@ class MapReduce(object):
         scratch = self._scratch()
 
         for query, sort in self._inqueue.get_in_iter():
-            try:
-                logger.debug("worker %s starting split" % num)
-                self.query = query
+            logger.debug("worker %s starting split" % num)
+            self.query = query
 
-                if not isinstance(query, Query):
-                    query = Query(self.collection, query, self.spec, sort)
+            if not isinstance(query, Query):
+                query = Query(self.collection, query, self.spec, sort)
 
-                count = 0
-                for item in self._find(query):
-                    count += 1
+            count = 0
+            for item in self._find(query):
+                count += 1
 
-                    for key, value in self.map(item):
-                        key = str(key)
-                        items[key].append(value)
-                        if len(items[key]) > self.item_limit:
-                            items[key] = [self.reduce(key, items[key])]
+                for key, value in self.map(item):
+                    key = str(key)
+                    items[key].append(value)
+                    if len(items[key]) > self.item_limit:
+                        items[key] = [self.reduce(key, items[key])]
 
-                    if len(items) > self.reduce_limit:
-                        items = self._reduce_and_send(items, scratch)
-                        logger.debug("reduce and flush from worker %s" % num)
+                if len(items) > self.reduce_limit:
+                    items = self._reduce_and_send(items, scratch)
+                    logger.debug("reduce and flush from worker %s" % num)
 
-                logger.debug("worker %s finished %s in split" % (num, count))
-            except Exception, e:
-                raise MapReduceWorkerException(query.collection, query.query, query.sort, e)
+            logger.debug("worker %s finished %s in split" % (num, count))
 
         self._reduce_and_send(items, scratch)
         logger.debug("worker %s finish" % num)
