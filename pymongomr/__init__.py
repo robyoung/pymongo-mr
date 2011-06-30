@@ -144,9 +144,9 @@ class MapReduce(object):
 #    Interface Methods
     def start(self):
         self._scratch_collection = "pymr.scratch.%s" % os.getpid()
-        self._out().drop()
         self.init_report()
         self._start_workers()
+        self._out().drop()
         self._start_reducers()
         self.complete()
         self._scratch().drop()
