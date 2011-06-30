@@ -40,7 +40,7 @@ class PoisonQueue(object):
 
     def join(self):
         """Wait for all poison pills ignoring anything else."""
-        for event in self.get_out_iter():
+        for _ in self.get_out_iter():
             pass
 
 
@@ -88,6 +88,9 @@ class MapReduce(object):
     spec   = {}
 
     out = None
+
+    database = None
+    collection = None
 
     _scratch_collection = None
 
@@ -289,3 +292,6 @@ class Query(object):
     def __iter__(self):
         yield self
         yield None
+
+    def __str__(self):
+        return "<Query coll=%s, query=%s, spec=%s, sort=%s, skip=%s, limit=%s>" % (self.collection, self.query, self.spec, self.sort, self.skip, self.limit)
