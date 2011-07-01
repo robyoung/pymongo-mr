@@ -183,8 +183,8 @@ class MapReduce(object):
             worker.start()
 
         # feed them
-        for item in self.splitter():
-            self._inqueue.put(item)
+        for i, item in enumerate(self.splitter()):
+            self._inqueue.put((i, item))
         self._inqueue.done_all()
 
         # join them all because the final reducers cannot start until the workers have finished
@@ -200,8 +200,10 @@ class MapReduce(object):
         items   = defaultdict(list)
         scratch = self._scratch()
 
-        for query, sort in self._inqueue.get_in_iter():
-            logger.debug("worker %s starting split" % num)
+        for query_num, (query, sort) in self._inqueue.get_in_iter():
+            if query_num is 0:
+                logger.debug("initial query: %s" % query)
+            logger.debug("worker %s starting split %s" % (num, query_num))
             self.query = query
 
             if not isinstance(query, Query):
@@ -221,7 +223,7 @@ class MapReduce(object):
                     items = self._reduce_and_send(items, scratch)
                     logger.debug("reduce and flush from worker %s" % num)
 
-            logger.debug("worker %s finished %s in split" % (num, count))
+            logger.debug("worker %s finished %s in split %s" % (num, count, query_num))
 
         self._reduce_and_send(items, scratch)
         logger.debug("worker %s finish" % num)
