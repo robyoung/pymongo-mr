@@ -70,7 +70,7 @@ if __name__ == "__main__":
     handler.setLevel(logging.DEBUG)
     logger.addHandler(handler)
 
-    mymr = MyMapReduce(host="localhost")
+    mymr = MyMapReduce()
     coll = mymr.start()
     for key, value in mymr.results():
         print key, value
