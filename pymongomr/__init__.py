@@ -152,6 +152,7 @@ class MapReduce(object):
         self._out().drop()
         self._start_reducers()
         self.complete()
+        logger.debug("dropping scratch collection %s" % self._scratch_collection)
         self._scratch().drop()
 
     def join(self):
@@ -231,7 +232,7 @@ class MapReduce(object):
     def _reduce_and_send(self, items, scratch):
         """Reduce a list of items and append them to the key in the scratch database."""
         for key, values in items.items():
-            scratch.update({"_id":key}, {"$push":{"value":self.reduce(key, values)}}, upsert=True)
+            scratch.update({"_id":key}, {"$push":{"value":self.reduce(key, values)}}, upsert=True, safe=True)
         return defaultdict(list)
 
     def _start_reducers(self):
