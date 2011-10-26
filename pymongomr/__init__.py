@@ -155,6 +155,16 @@ class MapReduce(object):
         logger.debug("dropping scratch collection %s" % self._scratch_collection)
         self._scratch().drop()
 
+    def start_inline(self):
+        self._scratch_collection = "pymr.scratch.%s" % os.getpid()
+        self.init_report()
+        self._do_worker(9, enumerate(self.splitter()))
+        self._out().drop()
+        self._reducer(0, 0)
+        self.complete()
+        logger.debug("dropping scratch collection %s" % self._scratch_collection)
+        self._scratch().drop()
+
     def join(self):
         # nothing to do, legacy
         pass
@@ -196,12 +206,15 @@ class MapReduce(object):
         return self._get_db()[query.collection].find(query.query, query.spec, sort=query.sort, skip=query.skip, limit=query.limit)
 
     def _worker(self, num):
+        self._do_worker(num, self._inqueue.get_in_iter())
+
+    def _do_worker(self, num, iter):
         logger.debug("worker %s start" % num)
         self.init_worker(num)
         items   = defaultdict(list)
         scratch = self._scratch()
 
-        for query_num, (query, sort) in self._inqueue.get_in_iter():
+        for query_num, (query, sort) in iter:
             if query_num is 0:
                 logger.debug("initial query: %s" % query)
             logger.debug("worker %s starting split %s" % (num, query_num))
