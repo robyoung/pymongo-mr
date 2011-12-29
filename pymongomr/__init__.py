@@ -90,20 +90,36 @@ class MapReduce(object):
     out = None
 
     database = None
+    src_database = None
+    dst_database = None
     collection = None
 
     _scratch_collection = None
 
     def __init__(self, host="localhost", port=27017):
-        self._host = host
-        self._port = port
+        self._src_host = self._dst_host = host
+        self._src_port = self._dst_port = port
+        self.src_database = self.src_database or self.database
+        self.dst_database = self.dst_database or self.database
 
 #    Connection Methods
-    def _get_con(self):
-        return pymongo.Connection(self._host, self._port)
+    def _get_con(self, host, port):
+        return pymongo.Connection(host, port)
 
-    def _get_db(self):
-        return self._get_con()[self.database]
+    def _get_src_con(self):
+        return self._get_con(self._src_host, self._src_port)
+
+    def _get_dst_con(self):
+        return self._get_con(self._dst_host, self._dst_port)
+
+    def _get_db(self, host, port, database):
+        return self._get_con(host, port)[database]
+
+    def _get_src_db(self):
+        return self._get_db(self._src_host, self._src_port, self.src_database)
+
+    def _get_dst_db(self):
+        return self._get_db(self._dst_host, self._dst_port, self.dst_database)
 
 #    Override Methods
     def splitter(self):
@@ -171,11 +187,11 @@ class MapReduce(object):
 
     def _out(self):
         """Returns the output collection."""
-        return self._get_db()[self.out]
+        return self._get_dst_db()[self.out]
 
     def _scratch(self):
         """Returns the temporary scratch collection."""
-        return self._get_db()[self._scratch_collection]
+        return self._get_dst_db()[self._scratch_collection]
 
     def results(self):
         for item in self._out().find():
@@ -203,7 +219,7 @@ class MapReduce(object):
             worker.join()
 
     def _find(self, query):
-        return self._get_db()[query.collection].find(query.query, query.spec, sort=query.sort, skip=query.skip, limit=query.limit)
+        return self._get_src_db()[query.collection].find(query.query, query.spec, sort=query.sort, skip=query.skip, limit=query.limit)
 
     def _worker(self, num):
         self._do_worker(num, self._inqueue.get_in_iter())
@@ -280,7 +296,7 @@ class MapReduce(object):
     def _save_func(self):
         if not self.out:
             raise MapReduceException("No output collection defined, please set a class property called 'out'.")
-        coll = self._get_db()[self.out]
+        coll = self._get_dst_db()[self.out]
         def func(key, value):
             coll.save({"_id":key, "value":value}, safe=True)
         return func
