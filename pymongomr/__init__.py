@@ -57,6 +57,8 @@ class PoisonQueue(object):
                     yield item
             except Queue.Empty:
                 pass
+            except KeyboardInterrupt:
+                break
 
     def get_in_iter(self):
         while True:
@@ -68,6 +70,8 @@ class PoisonQueue(object):
                     yield item
             except Queue.Empty:
                 pass
+            except KeyboardInterrupt:
+                break
 
 class MapReduce(object):
     """
