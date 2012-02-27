@@ -223,7 +223,11 @@ class MapReduce(object):
             worker.join()
 
     def _find(self, query):
-        return self._get_src_db()[query.collection].find(query.query, query.spec, sort=query.sort, skip=query.skip, limit=query.limit)
+        if not query.db:
+            db = self._get_src_db()
+        else:
+            db = self._get_db(query.host, query.port, query.db)
+        return db[query.collection].find(query.query, query.spec, sort=query.sort, skip=query.skip, limit=query.limit)
 
     def _worker(self, num):
         self._do_worker(num, self._inqueue.get_in_iter())
@@ -317,13 +321,16 @@ class MapReduceWorkerException(MapReduceException):
         self.e          = e
 
 class Query(object):
-    def __init__(self, collection, query, spec, sort, skip=0, limit=0):
+    def __init__(self, collection, query, spec, sort, skip=0, limit=0, host=None, port=27017, db=None):
         self.collection = collection
         self.query      = query
         self.spec       = spec
         self.sort       = sort
         self.skip       = skip
         self.limit      = limit
+        self.host       = host
+        self.port       = port
+        self.db         = db
 
     def __iter__(self):
         yield self
